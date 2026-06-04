@@ -1,0 +1,681 @@
+{
+  "name": "ai_workfllow_WhatsApp/Web",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai_chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -416,
+        -128
+      ],
+      "id": "214df2dd-d104-4456-b335-91ad734d01cc",
+      "name": "Webhook Entry",
+      "webhookId": "5f2b9dfb-e247-4a8e-ba65-1ec3d0def230"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst msg = body.message ? body.message.toLowerCase() : \"\";\n\nconst userConfirmation = msg.includes(\"oui\") || msg.includes(\"ok\") || msg.includes(\"confermer\");\n\nreturn [\n  {\n    json: {\n      phone: body.phone,\n      name: body.name || null,\n      message: body.message || \"\",\n      channel: body.channel || \"whatsapp\",\n      user_confirmation: userConfirmation,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -128
+      ],
+      "id": "5a5abf40-5ba3-495e-877a-3cbd506a0abc",
+      "name": "Parse Input"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        496,
+        176
+      ],
+      "id": "5060a01d-df00-4cec-869d-2372d6fc5dda",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "wPR1D107AxR9kQIk",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Parse Input').first().json.message }}",
+        "options": {
+          "systemMessage": "=You are \"Hotel AI\", a professional hotel booking assistant for a hotel in Agadir, Morocco.\n\n=== CUSTOMER INFO (never ask for these) ===\n- Name: {{ $('Upsert Customer').first().json.name }}\n- Customer ID: {{ $('Upsert Customer').first().json.id }}\n- Phone: {{ $('Upsert Customer').first().json.phone }}\n- Channel: {{ $('Upsert Customer').first().json.channel }}\n- Today's date: {{ $now.format('YYYY-MM-DD') }}\n\n=== HOTEL INFO ===\n- Name: Hotel AI Agadir\n- Location: Agadir, Morocco\n- Check-in: 2:00 PM | Check-out: 12:00 PM\n- Amenities: Free WiFi, Swimming Pool, Breakfast included, Parking, 24/7 Reception\n- Languages supported: Arabic, French, English, Darija\n\n=== BEHAVIOR RULES ===\n1. Always reply in the same language the customer uses\n2. Never ask for name, phone, or customer ID — you already have them\n3. Ask for missing info ONE question at a time (check-in → check-out → guests)\n4. Convert all dates to YYYY-MM-DD format before calling any tool\n5. Never confirm a booking without actually calling the book_room tool\n6. Never invent room IDs, booking IDs, prices, or availability\n7. If a tool fails, apologize and suggest an alternative\n8. Be friendly, professional, and concise\n9. Always summarize tool results naturally in the customer's language\n10. If customer says \"yes\", \"confirm\", \"okay\" after seeing rooms → call book_room immediately\n\n=== AVAILABLE TOOLS ===\n- check_availability\n  Use: customer asks if rooms available for specific dates\n  Needs: guests (number), checkin_date (YYYY-MM-DD), checkout_date (YYYY-MM-DD)\n\n- book_room\n  Use: customer confirms they want to book a specific room\n  Needs: room_id, checkin_date (YYYY-MM-DD), checkout_date (YYYY-MM-DD), guests (number)\n  IMPORTANT: always call check_availability first to get valid room_id\n\n- list_rooms\n  Use: customer wants to see all available rooms with prices\n  Needs: nothing\n\n- get_bookings\n  Use: customer asks about their reservations or current booking\n  Needs: customer_id (use from CUSTOMER INFO above)\n\n- cancel_booking\n  Use: customer wants to cancel a reservation\n  Needs: customer_id (use from CUSTOMER INFO above)\n  IMPORTANT: always call get_bookings first to confirm booking exists\n\n- get_info\n  Use: customer asks general questions about hotel (wifi, breakfast, parking, pool, location)\n  Needs: nothing\n\n=== WORKFLOWS (follow exactly) ===\n\nBOOKING FLOW:\n1. Ask for check-in date (if missing)\n2. Ask for check-out date (if missing)\n3. Ask for number of guests (if missing)\n4. Call check_availability → show results\n5. Wait for customer to pick a room\n6. Call book_room → confirm with details\n\nCANCELLATION FLOW:\n1. Call get_bookings → show customer's bookings\n2. Ask which booking to cancel (if multiple)\n3. Call cancel_booking → confirm cancellation\n\nINFO FLOW:\n1. Call get_info → summarize answer naturally\n\n=== RESPONSE FORMAT ===\n- Keep replies short and clear\n- Use bullet points for room lists\n- Always include price per night when showing rooms\n- Confirm booking with: room name, dates, guests, total price (if available)\n- End every response with a helpful follow-up question when appropriate"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        864,
+        -128
+      ],
+      "id": "c0539384-234b-4310-9da2-f7a3d5ab50e0",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/customers?on_conflict=phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates ,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone\": \"{{ $json.phone }}\",\n  \"name\": \"{{ $json.name }}\",\n  \"channel\": \"{{ $json.channel }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        32,
+        -128
+      ],
+      "id": "23f13adb-57c6-492c-aa62-81696bde69a6",
+      "name": "Upsert Customer",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $('AI Agent').first().json.output } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1600,
+        -128
+      ],
+      "id": "c37b56c2-28a0-4840-a568-0d2669c09131",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to list all available hotel rooms. It returns room id, name, type, capacity, price, and status. Use it when the customer asks what rooms are available, room prices, room types, or says they want to see rooms.",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/rooms",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id,name,type,capacity,price,status"
+            },
+            {
+              "name": "status",
+              "value": "eq.available"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        768,
+        192
+      ],
+      "id": "fc8e1378-d6da-4373-a520-1720f8751040",
+      "name": "list_rooms"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to fetch real hotel information from the database. Returns key/value pairs like hotel_name, location, checkin_time, checkout_time, amenities, wifi, pool, etc. Use it whenever the customer asks about general hotel information.",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/hotel_info",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "key,value"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        176
+      ],
+      "id": "616327c3-fa8d-43ca-a95e-85c05e5ac910",
+      "name": "get_info"
+    },
+    {
+      "parameters": {
+        "description": "Use this tool when the customer wants to cancel their latest confirmed booking. The tool finds the booking and changes its status to cancelled.",
+        "workflowId": {
+          "__rl": true,
+          "value": "TurHNEIa23wVCKrh",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/TurHNEIa23wVCKrh",
+          "cachedResultName": "cancel_booking_tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1264,
+        176
+      ],
+      "id": "6f6f112d-095a-4917-9ec9-629ffd33f1b6",
+      "name": "cancel_booking"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/session_state?on_conflict=customer_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Upsert Customer').first().json.id }}\",\n  \"last_updated\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        288,
+        -128
+      ],
+      "id": "46fef78f-ed7d-458c-814c-10215609d2f8",
+      "name": "Upsert Session State",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "session_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "customer_id",
+              "keyValue": "={{ $json.customer_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        656,
+        -128
+      ],
+      "id": "3754e7e1-d2fb-4cf1-a310-ca886bba8073",
+      "name": "Get Session State",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ZHxcZON5e8TcisAO",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/createbookinghook",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Get Session State').item.json.customer_id }}\",\n  \"room_id\": \"{{ $fromAI('room_id') }}\",\n  \"checkin_date\": \"{{ $fromAI('checkin_date') }}\",\n  \"checkout_date\": \"{{ $fromAI('checkout_date') }}\",\n  \"guests\": {{ $fromAI('guests')}}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1008,
+        176
+      ],
+      "id": "3a7f32b4-4353-49e5-aecf-d77f21100a54",
+      "name": "book_room"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.phone }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        624,
+        192
+      ],
+      "id": "452c205e-9b52-4a56-9180-ad47703fa10b",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/chat_history?on_conflict=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates ,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Upsert Customer').item.json.id }}\",\n  \"content\": {{ JSON.stringify($('AI Agent').item.json.output) }},\n  \"created_at\": \"{{ $now }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1376,
+        -128
+      ],
+      "id": "4eb9e28a-47e5-4ec0-89de-f6a267c5d3aa",
+      "name": "upsert chat history",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "session_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "=customer_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Get Session State').item.json.customer_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "last_bot_question",
+              "fieldValue": "={{ $json.output }}"
+            },
+            {
+              "fieldId": "customer_id",
+              "fieldValue": "={{ $('Upsert Customer').item.json.id }}"
+            },
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $('Upsert Customer').item.json.name }}"
+            },
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{ $('Upsert Customer').item.json.phone }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        -128
+      ],
+      "id": "802fb76a-d913-49f2-a3f8-4c5953db12b2",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ZHxcZON5e8TcisAO",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/check_availability",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"checkin_date\": \"{{ $fromAI('checkin_date')}}\",\n  \"checkout_date\": \"{{ $fromAI('checkout_date')}}\",\n  \"guests\": \"{{ $fromAI('guests')}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        176
+      ],
+      "id": "08be263c-78d1-41d0-a488-ea6441091d95",
+      "name": "check_availability"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Use this tool to retrieve a list of all current and past bookings for a specific customer. \nCall this tool when the user asks about their reservations, booking status, or if they have any upcoming stays.\nYou must provide the 'customer_id' as a parameter. \nThe tool will return a JSON list of bookings including booking_id, room_name, check-in date, check-out date, and status.\nIf the result is empty, explain to the user that they have no bookings found.",
+        "url": "https://wwyryaaaftbqvekmwtrr.supabase.co/rest/v1/bookings",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "=eq.{{ $json.customer_id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1408,
+        176
+      ],
+      "id": "36137b39-2ef2-4015-b712-4c14ff66abc4",
+      "name": "list_my_bookings"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Entry": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Upsert Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Customer": {
+      "main": [
+        [
+          {
+            "node": "Upsert Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_rooms": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_info": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cancel_booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Session State": {
+      "main": [
+        [
+          {
+            "node": "Get Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Session State": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "book_room": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upsert chat history": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row": {
+      "main": [
+        [
+          {
+            "node": "upsert chat history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_my_bookings": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ce00ab30-b985-42be-928c-858e379a0d19",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d9b79e51e101a2aa623ad2eadf7903fece1c503ed1106f94c1a4161710aaa4aa"
+  },
+  "id": "5T05h03z3Kqfza6G",
+  "tags": []
+}

@@ -1,0 +1,1127 @@
+{
+  "name": "Travaux AI Chatbot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "877bfffa-bc56-49ae-ba7c-953ee040fe64",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3264,
+        352
+      ],
+      "webhookId": "travaux-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst name = body.name || '';\nconst phone = body.phone || '';\nconst email = body.email || '';\nconst whatsapp_id = body.whatsapp_id || '';\nconst message = body.message || '';\nconst channel = body.channel || 'web';\n\n// Detect language\nconst arabicRegex = /[\\u0600-\\u06FF]/;\nconst latinRegex = /[a-zA-Z]/;\nconst hasArabic = arabicRegex.test(message);\nconst hasLatin = latinRegex.test(message);\n\nlet detected_language = 'fr';\nif (hasArabic && hasLatin) {\n  detected_language = 'darija';\n} else if (hasArabic) {\n  detected_language = 'ar';\n}\n\nconst message_lower = message.toLowerCase();\n\nreturn [{\n  json: {\n    name,\n    phone,\n    email,\n    whatsapp_id,\n    message,\n    message_lower,\n    channel,\n    detected_language,\n    requestBody: {\n      name: name || 'Unknown',\n      phone,\n      email,\n      source: channel,\n      preferred_language: detected_language\n    }\n  }\n}];"
+      },
+      "id": "6e832d7b-0a8b-4d23-a530-75cfc2a3e74f",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3008,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SUPABASE_URL/clients?on_conflict=phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "921cf8a1-01d1-46f0-8f54-ec721ff2e617",
+      "name": "Upsert Client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2752,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Input').first().json;\nconst clientRaw = $input.first().json;\nconst client = Array.isArray(clientRaw) ? clientRaw[0] : clientRaw;\nconst client_id = client.id;\n\nreturn [{\n  json: {\n    client_id,\n    requestBody: {\n      client_id,\n      channel: input.channel,\n      status: 'open',\n      last_message: input.message\n    }\n  }\n}];"
+      },
+      "id": "1892ed0d-27d6-408e-9504-1c54961a5880",
+      "name": "Prep Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2512,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SUPABASE_URL/conversations?on_conflict=client_id,channel",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "5e0ee3eb-e50e-4f03-baf7-53be9b2378e3",
+      "name": "Upsert Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2256,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const convRaw = $input.first().json;\nconst conv = Array.isArray(convRaw) ? convRaw[0] : convRaw;\nconst conversation_id = conv.id;\nconst client_id = $('Prep Conversation').first().json.client_id;\nconst input = $('Parse Input').first().json;\n\nconst supabaseUrl = 'YOUR_SUPABASE_URL';\nconst headersGet = {\n  'apikey': 'YOUR_SUPABASE_SERVICE_ROLE_KEY',\n  'Authorization': 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY'\n};\nconst headersPost = {\n  'apikey': 'YOUR_SUPABASE_SERVICE_ROLE_KEY',\n  'Authorization': 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY',\n  'Content-Type': 'application/json',\n  'Prefer': 'return=representation'\n};\n\n// Try to get existing session\nlet sessionData = null;\ntry {\n  const response = await this.helpers.httpRequest({\n    method: 'GET',\n    url: supabaseUrl + '/session_state?conversation_id=eq.' + conversation_id + '&limit=1',\n    headers: headersGet\n  });\n  if (Array.isArray(response) && response.length > 0) {\n    sessionData = response[0];\n  }\n} catch(e) {\n  // Session fetch failed\n}\n\n// Create session if not exists\nif (!sessionData) {\n  const newSession = {\n    conversation_id,\n    client_id,\n    current_intent: 'unknown',\n    collected_data: {\n      name: input.name,\n      phone: input.phone,\n      quote_stage: 'idle'\n    },\n    last_tool_used: null\n  };\n  try {\n    const createRes = await this.helpers.httpRequest({\n      method: 'POST',\n      url: supabaseUrl + '/session_state',\n      headers: headersPost,\n      body: newSession\n    });\n    sessionData = Array.isArray(createRes) ? createRes[0] : createRes;\n  } catch(e) {\n    sessionData = newSession;\n  }\n}\n\nreturn [{\n  json: {\n    conversation_id,\n    client_id,\n    session_state: sessionData\n  }\n}];"
+      },
+      "id": "048d4ba5-711e-4265-a13a-bc09e5154062",
+      "name": "Manage Session State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const session = $input.first().json;\nconst input = $('Parse Input').first().json;\n\nreturn [{\n  json: {\n    conversation_id: session.conversation_id,\n    client_id: session.client_id,\n    session_state: session.session_state,\n    requestBody: {\n      conversation_id: session.conversation_id,\n      client_id: session.client_id,\n      sender_type: 'client',\n      content: input.message,\n      intent: 'pending'\n    }\n  }\n}];"
+      },
+      "id": "068a2b56-22ff-487a-b4c1-3c45bd62c5f9",
+      "name": "Prep Save Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1760,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SUPABASE_URL/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "506ff6db-2812-4bd2-9ae8-50b87b73b1e6",
+      "name": "Save Client Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1504,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const session = $('Manage Session State').first().json;\nconst input = $('Parse Input').first().json;\nconst conversation_id = session.conversation_id;\n\nconst supabaseHeaders = {\n  'apikey': 'YOUR_SUPABASE_SERVICE_ROLE_KEY',\n  'Authorization': 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY'\n};\n\n// Fetch conversation history\nlet history = [];\ntry {\n  const messages = await this.helpers.httpRequest({\n    method: 'GET',\n    url: 'YOUR_SUPABASE_URL/messages?conversation_id=eq.' + conversation_id + '&order=created_at.asc&limit=20',\n    headers: supabaseHeaders\n  });\n  if (Array.isArray(messages)) {\n    history = messages.map(m => ({\n      role: m.sender_type === 'client' ? 'user' : 'assistant',\n      content: m.content\n    }));\n  }\n} catch(e) {\n  history = [];\n}\n\n// Build intent classifier request body\nconst requestBody = {\n  model: 'gpt-oss-120b',\n  max_tokens: 200,\n  response_format: { type: 'json_object' },\n  messages: [\n    {\n      role: 'system',\n      content: 'You are an intent classifier for a Moroccan construction company. Classify the user message into exactly ONE intent. Return JSON only, no explanation: { \"intent\": \"...\", \"confidence\": 0.0 } Intents: list_services, list_materials, search_faq, get_projects, get_quotes, create_quote, unknown. Rules: - create_quote = user wants price estimate, devis, or mentions building/renovation project - list_services = asks what services exist - list_materials = asks about materials available - search_faq = asks a general question about the company - get_projects = asks about past projects or portfolio - get_quotes = asks about their existing quotes - unknown = greetings or unclear'\n    },\n    {\n      role: 'user',\n      content: input.message\n    }\n  ]\n};\n\nreturn [{\n  json: {\n    requestBody,\n    conversation_id,\n    client_id: session.client_id,\n    session_state: session.session_state,\n    history\n  }\n}];"
+      },
+      "id": "af0608c1-beb0-499e-8352-1b726443850e",
+      "name": "Prep Intent Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1264,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENROUTER_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "5dba6465-1be3-4a8d-bdc7-ca9a02a2fb86",
+      "name": "Call Intent AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst data = $('Prep Intent Request').first().json;\n\nlet intent = 'unknown';\nlet confidence = 0;\n\ntry {\n  const content = response.choices[0].message.content;\n  const parsed = typeof content === 'string' ? JSON.parse(content) : content;\n  intent = parsed.intent || 'unknown';\n  confidence = parsed.confidence || 0;\n} catch(e) {\n  intent = 'unknown';\n}\n\n// Validate intent against known list\nconst validIntents = ['list_services', 'list_materials', 'search_faq', 'get_projects', 'get_quotes', 'create_quote', 'unknown'];\nif (!validIntents.includes(intent)) {\n  intent = 'unknown';\n}\n\nreturn [{\n  json: {\n    intent,\n    confidence,\n    conversation_id: data.conversation_id,\n    client_id: data.client_id,\n    session_state: data.session_state,\n    history: data.history\n  }\n}];"
+      },
+      "id": "d2d9e2ca-aa6c-4945-982b-350f0c64798a",
+      "name": "Parse Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-services",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "list_services",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list_services"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-materials",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "list_materials",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list_materials"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-faq",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "search_faq",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "search_faq"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-projects",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "get_projects",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "get_projects"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-quotes",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "get_quotes",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "get_quotes"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "cond-create-quote",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "create_quote",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_quote"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9dcfea29-31b3-4b3c-937f-6c1c279e3633",
+      "name": "Switch Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -512,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "url": "YOUR_SUPABASE_URL/services?status=eq.active&select=id,name,description,base_price,unit",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "60e46efe-ad41-41a6-a70f-5d6573fc5109",
+      "name": "Fetch Services",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "YOUR_SUPABASE_URL/materials?status=eq.active&select=id,name,description,selling_price,unit",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "84ed6db2-00af-4723-bb22-a4a595f44054",
+      "name": "Fetch Materials",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "YOUR_SUPABASE_URL/faq?select=id,question,answer,category",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "88aa7ac1-f45a-4f61-83ba-2c0973755a75",
+      "name": "Fetch FAQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "YOUR_SUPABASE_URL/knowledge_documents?select=*&order=created_at.desc&limit=10",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1d576f7e-a2e5-4221-bc43-c8f9017fafd2",
+      "name": "Fetch Projects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -208,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst client_id = data.client_id;\n\nreturn [{\n  json: {\n    requestUrl: 'YOUR_SUPABASE_URL/quotes?client_id=eq.' + client_id + '&select=*&order=created_at.desc'\n  }\n}];"
+      },
+      "id": "2c48d04d-c9b6-4b47-bc3d-fb05881010bf",
+      "name": "Prep Fetch Quotes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.requestUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "251e50db-7983-4cfe-b9cc-397eb70eca44",
+      "name": "Fetch Quotes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -128,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const supabaseUrl = 'YOUR_SUPABASE_URL';\nconst headers = {\n  'apikey': 'YOUR_SUPABASE_SERVICE_ROLE_KEY',\n  'Authorization': 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY'\n};\n\nlet services = [];\nlet materials = [];\nlet knowledge = [];\n\ntry {\n  services = await this.helpers.httpRequest({\n    method: 'GET',\n    url: supabaseUrl + '/services?status=eq.active&select=id,name,description,base_price,unit',\n    headers\n  });\n  if (!Array.isArray(services)) services = [];\n} catch(e) { services = []; }\n\ntry {\n  materials = await this.helpers.httpRequest({\n    method: 'GET',\n    url: supabaseUrl + '/materials?status=eq.active&select=id,name,description,selling_price,unit,stock_quantity',\n    headers\n  });\n  if (!Array.isArray(materials)) materials = [];\n} catch(e) { materials = []; }\n\ntry {\n  knowledge = await this.helpers.httpRequest({\n    method: 'GET',\n    url: supabaseUrl + '/knowledge_documents?select=*&order=created_at.desc&limit=5',\n    headers\n  });\n  if (!Array.isArray(knowledge)) knowledge = [];\n} catch(e) { knowledge = []; }\n\nreturn [{\n  json: {\n    tool_result: {\n      services,\n      materials,\n      knowledge_documents: knowledge\n    },\n    tool_name: 'create_quote'\n  }\n}];"
+      },
+      "id": "7c8f98e8-fd53-4e00-8814-a5ae7c27edaf",
+      "name": "Fetch Quote Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    tool_result: [],\n    tool_name: 'unknown'\n  }\n}];"
+      },
+      "id": "3cff20f6-ec13-47ab-a5c0-f5e4a9bddd08",
+      "name": "Set Empty Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allInputs = $input.all().map(i => i.json);\nconst intentData = $('Parse Intent').first().json;\nconst intent = intentData.intent;\nconst input = $('Parse Input').first().json;\nconst session = $('Manage Session State').first().json;\nconst history = intentData.history || [];\n\n// Determine tool result based on which branch fed us\nlet tool_result = [];\nlet tool_name = intent;\n\nconst firstInput = allInputs[0];\nif (firstInput && firstInput.tool_result !== undefined) {\n  // From Fetch Quote Data or Set Empty Result code nodes\n  tool_result = firstInput.tool_result;\n  tool_name = firstInput.tool_name || intent;\n} else {\n  // From HTTP GET nodes — all items are the tool result array\n  tool_result = allInputs;\n  tool_name = intent;\n}\n\n// Build the main AI system prompt\nconst systemPrompt = `You are an AI assistant for a Moroccan construction and renovation company called Travaux.\n\nRULES:\n- Use ONLY data provided in tool_result. Never invent services, prices, or materials.\n- Reply in the SAME language as the user's last message (Darija in latin script, French, or Arabic).\n- Ask ONE question at a time. Never ask multiple questions in one message.\n- Be concise and friendly.\n- Always return valid JSON only: { \"reply\": \"string\", \"status\": \"complete|incomplete\", \"session_updates\": {} }\n\nFOR create_quote intent:\n- Check session_state.collected_data.quote_stage\n- If quote_stage is 'idle' or missing: ask project type first, set quote_stage='collecting'\n- If quote_stage is 'collecting':\n    check what is missing from [project_type, surface_m2, city]\n    ask for ONE missing field only\n    update collected_data with any new info from message\n- If all 3 fields collected: set quote_stage='ready'\n- If quote_stage is 'ready':\n    select appropriate services from tool_result.services based on project_type\n    select appropriate materials from tool_result.materials based on project_type\n    calculate quantity per service based on surface_m2\n    unit_price = base_price for services, selling_price for materials\n    total_price = quantity * unit_price\n    price_min = total * 0.85\n    price_max = total * 1.20\n    set quote_stage='created'\n    include in session_updates: { quote_items: [...], quote_total_min: X, quote_total_max: Y }\n    reply with summary and price range in user's language\n\nFOR other intents: use tool_result data to answer clearly.`;\n\n// Build user message content\nconst userContent = JSON.stringify({\n  input: {\n    message: input.message,\n    channel: input.channel,\n    name: input.name,\n    phone: input.phone\n  },\n  session_state: {\n    current_intent: session.session_state.current_intent || intent,\n    collected_data: session.session_state.collected_data || {}\n  },\n  conversation_history: history.slice(-10),\n  tool_name: tool_name,\n  tool_result: tool_result\n});\n\nreturn [{\n  json: {\n    requestBody: {\n      model: 'gpt-oss-120b',\n      max_tokens: 1000,\n      response_format: { type: 'json_object' },\n      messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: userContent }\n      ]\n    }\n  }\n}];"
+      },
+      "id": "b08f836c-a460-497d-9fb1-870183826156",
+      "name": "Build AI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENROUTER_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "c1a218c9-5ca3-4c44-954b-9fbe1458755a",
+      "name": "Call Main AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        544,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst intentData = $('Parse Intent').first().json;\nconst intent = intentData.intent;\nconst session = $('Manage Session State').first().json;\nconst conversation_id = session.conversation_id;\nconst client_id = session.client_id;\n\n// Parse AI response\nlet reply = '';\nlet status = 'complete';\nlet session_updates = {};\n\ntry {\n  const content = response.choices[0].message.content;\n  const parsed = typeof content === 'string' ? JSON.parse(content) : content;\n  reply = parsed.reply || '';\n  status = parsed.status || 'complete';\n  session_updates = parsed.session_updates || {};\n} catch(e) {\n  reply = 'Désolé, une erreur est survenue. Veuillez réessayer.';\n  status = 'complete';\n  session_updates = {};\n}\n\n// Handle quote creation if AI produced a complete quote\nlet quote_created = false;\nlet quote_id = null;\n\nif (intent === 'create_quote' && session_updates.quote_stage === 'created' && session_updates.quote_items && session_updates.quote_items.length > 0) {\n  const supabaseUrl = 'YOUR_SUPABASE_URL';\n  const headers = {\n    'apikey': 'YOUR_SUPABASE_SERVICE_ROLE_KEY',\n    'Authorization': 'Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY',\n    'Content-Type': 'application/json',\n    'Prefer': 'return=representation'\n  };\n\n  const quoteNumber = 'QT-' + Date.now();\n  const items = session_updates.quote_items;\n  const subtotal = items.reduce((sum, item) => sum + (item.total_price || 0), 0);\n  const tax = Math.round(subtotal * 0.20 * 100) / 100;\n  const total = Math.round((subtotal + tax) * 100) / 100;\n\n  try {\n    const quoteRes = await this.helpers.httpRequest({\n      method: 'POST',\n      url: supabaseUrl + '/quotes',\n      headers,\n      body: {\n        client_id,\n        conversation_id,\n        quote_number: quoteNumber,\n        status: 'draft',\n        subtotal,\n        tax,\n        total,\n        currency: 'MAD',\n        notes: ''\n      }\n    });\n\n    const quote = Array.isArray(quoteRes) ? quoteRes[0] : quoteRes;\n    quote_id = quote.id;\n    quote_created = true;\n\n    // Create each quote item\n    for (const item of items) {\n      try {\n        await this.helpers.httpRequest({\n          method: 'POST',\n          url: supabaseUrl + '/quote_items',\n          headers,\n          body: {\n            quote_id,\n            item_type: item.item_type || 'service',\n            service_id: item.service_id || null,\n            material_id: item.material_id || null,\n            name: item.name || '',\n            quantity: item.quantity || 1,\n            unit: item.unit || 'unit',\n            unit_price: item.unit_price || 0,\n            total_price: item.total_price || 0\n          }\n        });\n      } catch(itemErr) {\n        // Continue with remaining items\n      }\n    }\n  } catch(quoteErr) {\n    quote_created = false;\n    quote_id = null;\n  }\n}\n\nreturn [{\n  json: {\n    reply,\n    status,\n    intent,\n    session_updates,\n    conversation_id,\n    client_id,\n    quote_created,\n    quote_id\n  }\n}];"
+      },
+      "id": "1179e1b4-76ca-40b2-862a-5f2a1be55576",
+      "name": "Process AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    reply: data.reply,\n    status: data.status,\n    intent: data.intent,\n    session_updates: data.session_updates,\n    conversation_id: data.conversation_id,\n    client_id: data.client_id,\n    quote_created: data.quote_created,\n    quote_id: data.quote_id,\n    requestBody: {\n      conversation_id: data.conversation_id,\n      client_id: data.client_id,\n      sender_type: 'assistant',\n      content: data.reply,\n      intent: data.intent\n    }\n  }\n}];"
+      },
+      "id": "80dbd3e9-e9a5-4203-9130-b4247e1ee2dc",
+      "name": "Prep Save AI Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SUPABASE_URL/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "23019805-4232-4763-95a1-580f9fd2c6da",
+      "name": "Save AI Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Prep Save AI Message').first().json;\nconst session = $('Manage Session State').first().json;\nconst currentCollected = (session.session_state && session.session_state.collected_data) || {};\nconst updates = data.session_updates || {};\n\n// Merge existing collected_data with new session_updates\nconst mergedData = { ...currentCollected, ...updates };\n\nreturn [{\n  json: {\n    reply: data.reply,\n    status: data.status,\n    intent: data.intent,\n    quote_created: data.quote_created,\n    quote_id: data.quote_id,\n    conversation_id: data.conversation_id,\n    requestUrl: 'YOUR_SUPABASE_URL/session_state?conversation_id=eq.' + data.conversation_id,\n    requestBody: {\n      current_intent: data.intent,\n      collected_data: mergedData,\n      last_tool_used: data.intent\n    }\n  }\n}];"
+      },
+      "id": "065ab8e3-c06a-4927-9789-f0f5c81b0a72",
+      "name": "Prep Update Session",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.requestUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "5cf725bd-3d49-4459-b7e0-83fe2055feb0",
+      "name": "Update Session State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Prep Update Session').first().json;\n\nreturn [{\n  json: {\n    reply: data.reply,\n    status: data.status,\n    intent: data.intent,\n    quote_created: data.quote_created || false,\n    quote_id: data.quote_id || null\n  }\n}];"
+      },
+      "id": "0e8dfdd7-def7-4930-b6dc-4b40f0b84acc",
+      "name": "Prep Webhook Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "39203726-64cd-4dc9-a248-d5a85fdd91d8",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2304,
+        352
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Upsert Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Client": {
+      "main": [
+        [
+          {
+            "node": "Prep Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Conversation": {
+      "main": [
+        [
+          {
+            "node": "Upsert Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Conversation": {
+      "main": [
+        [
+          {
+            "node": "Manage Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manage Session State": {
+      "main": [
+        [
+          {
+            "node": "Prep Save Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Save Message": {
+      "main": [
+        [
+          {
+            "node": "Save Client Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Client Message": {
+      "main": [
+        [
+          {
+            "node": "Prep Intent Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Intent Request": {
+      "main": [
+        [
+          {
+            "node": "Call Intent AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Intent AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Intent": {
+      "main": [
+        [
+          {
+            "node": "Switch Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Intent": {
+      "main": [
+        [
+          {
+            "node": "Fetch Services",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Materials",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch FAQ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Projects",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Fetch Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Quote Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Services": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Materials": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch FAQ": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Projects": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Fetch Quotes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Quotes": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Quote Data": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Empty Result": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Request": {
+      "main": [
+        [
+          {
+            "node": "Call Main AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Main AI": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Response": {
+      "main": [
+        [
+          {
+            "node": "Prep Save AI Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Save AI Message": {
+      "main": [
+        [
+          {
+            "node": "Save AI Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Message": {
+      "main": [
+        [
+          {
+            "node": "Prep Update Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Update Session": {
+      "main": [
+        [
+          {
+            "node": "Update Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session State": {
+      "main": [
+        [
+          {
+            "node": "Prep Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Webhook Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f9dbf917-c8cb-467d-825d-ac66ef14f950",
+  "meta": {
+    "instanceId": "d9b79e51e101a2aa623ad2eadf7903fece1c503ed1106f94c1a4161710aaa4aa"
+  },
+  "id": "rWsd1rK1MKpPBMXB",
+  "tags": []
+}

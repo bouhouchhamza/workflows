@@ -1,0 +1,1687 @@
+{
+  "name": "ai_hotel_from scratch",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai_chat",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -944,
+        0
+      ],
+      "id": "392ddcb1-59c7-450f-a28f-bf1a281ff7e5",
+      "name": "Webhook",
+      "webhookId": "5f2b9dfb-e247-4a8e-ba65-1ec3d0def230"
+    },
+    {
+      "parameters": {
+        "jsCode": "// جلب البيانات من webhook input\nconst phone = $json[\"body\"][\"phone\"]?.trim() || \"\";\nconst name = $json[\"body\"][\"name\"]?.trim() || \"Guest\";\nlet channel = $json[\"body\"][\"channel\"]?.trim()?.toLowerCase() || \"web\";\nlet message = $json[\"body\"][\"message\"]?.trim() || \"\";\n\n// allowed channels validation\nconst allowedChannels = [\"whatsapp\", \"web\"];\nif (!allowedChannels.includes(channel)) channel = \"web\";\n\n// lowercase normalization for easier parsing (optional)\nmessage = message.toLowerCase();\n\nreturn [\n  {\n    json: {\n      phone: phone,\n      name: name,\n      channel: channel,\n      message: message\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        0
+      ],
+      "id": "9526d56a-83db-4fed-a190-1758d2d27171",
+      "name": "Parse Input Node"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://xljwdqlhzyrlzaikjwfm.supabase.co/rest/v1/customers?on_conflict=phone",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates ,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone\": \"{{$json[\"phone\"]}}\",\n  \"name\": \"{{$json[\"name\"]}}\",\n  \"channel\": \"{{$json[\"channel\"] || 'web'}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -512,
+        0
+      ],
+      "id": "c3823664-0e62-4284-8c36-5eec249836de",
+      "name": "Upsert Customer",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2384,
+        -2704
+      ],
+      "id": "aaa95c39-f802-4f94-a069-18a79246be4c",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f23ab92f-ae4c-4f34-a6dc-313cdde811e6",
+              "name": "customer_id",
+              "value": "={{ $('Get Customer').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "b5e23546-0e5a-489d-a769-a3b55143c2fb",
+              "name": "reply",
+              "value": "={{ $json.reply }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        816,
+        -2192
+      ],
+      "id": "a9c2f3e7-c212-4980-85bd-9cf11b207fe5",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "list_rooms",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9b4b4580-2286-485a-b6af-e03c1b0ddc12"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list rooms"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a3c11ef9-0c7e-48ce-95dc-e9537ad838c1",
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "check_availability",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "checking availibity"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "76e7d750-cd15-4127-bd9d-0656fd28826f",
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "book_room",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "booking a room"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "bd5cbb76-c54c-4bc9-bb90-4c23446416a8",
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "cancel_booking",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancel a booking"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "dc67eb28-7016-4563-8548-9e508d1249b8",
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "hotel_info",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "get infos"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2975db75-ce3e-476e-8a91-dac82d059d90",
+                    "leftValue": "={{ $('Build AI Prompt').item.json.intent }}",
+                    "rightValue": "unknown",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "unkown"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        -64
+      ],
+      "id": "daeabc27-42f7-436b-8f72-cfefc86f8087",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "rooms",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "available"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        -3024
+      ],
+      "id": "3561b174-848f-4a1d-b8f2-af3b3132da08",
+      "name": "GET AVAILABLE ROOMS",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rooms = $input.all().map(i => i.json);\n\nlet text = \"ها الغرف المتوفرة عندنا:\\n\\n\";\n\nif (!rooms.length) {\n  text = \"سمح ليا، دابا ما كايناش غرف متوفرة.\";\n} else {\n  for (const room of rooms) {\n    text += `🏨 ${room.name} - ${room.type || ''}\\n`;\n    text += `👥 ${room.capacity || ''} أشخاص\\n`;\n    text += `💰 ${room.price || ''} MAD / night\\n\\n`;\n  }\n}\n\nreturn [{ json: { reply: text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        -3024
+      ],
+      "id": "beef0c27-bd87-4caa-b282-431b4cf4378f",
+      "name": "FORMAT ROOMS RESPONSE"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "conversation_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{$json.phone}}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "last_intent",
+              "fieldValue": "= {{$json.ai.intent}}"
+            },
+            {
+              "fieldId": "pending_booking_data",
+              "fieldValue": "={{$json.ai.parameters}}"
+            },
+            {
+              "fieldId": "last_message",
+              "fieldValue": "={{$json.message}}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{$moment().format()}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3664,
+        -3024
+      ],
+      "id": "30353c2b-f1dd-408b-abbf-09123f2da8cf",
+      "name": "UPDATE CONVERSATION STATE",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{$json.phone}}"
+            },
+            {
+              "fieldId": "customer_id",
+              "fieldValue": "= {{$json.customer_id}}"
+            },
+            {
+              "fieldId": "direction",
+              "fieldValue": "\"inbound\""
+            },
+            {
+              "fieldId": "channel",
+              "fieldValue": "={{$json.channel}}"
+            },
+            {
+              "fieldId": "message_text",
+              "fieldValue": "={{$json.message}}"
+            },
+            {
+              "fieldId": "ai_intent",
+              "fieldValue": "={{$json.ai.intent}} || \"unknown\""
+            },
+            {
+              "fieldId": "ai_response",
+              "fieldValue": "= {{$json.ai}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3456,
+        -3024
+      ],
+      "id": "8599faa6-1e36-4c0c-8f9a-c230d9a8c4db",
+      "name": "SAVE MESSAGE LOG",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.ai.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3872,
+        -3024
+      ],
+      "id": "dbaa7f4d-0ae9-495f-9d28-caacd6b05af9",
+      "name": "RESPOND TO WEBHOOK"
+    },
+    {
+      "parameters": {
+        "tableId": "bookings",
+        "dataToSend": "autoMapInputData"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3712,
+        -2528
+      ],
+      "id": "c7c987c5-3639-4eb2-8006-806028e8cca7",
+      "name": "CREATE BOOKING",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "bookings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "room_id",
+              "condition": "eq",
+              "keyValue": "={{$json.room_id}}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "'booked'"
+            },
+            {
+              "keyName": "check_in",
+              "condition": "lt",
+              "keyValue": "={{$json.check_out}} "
+            },
+            {
+              "keyName": "check_out",
+              "condition": "gt",
+              "keyValue": "={{$json.check_in}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3552,
+        -2528
+      ],
+      "id": "f7dd7da0-eb02-49a8-a2e5-aa7c8e44a0bf",
+      "name": "Check Availability SQL",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const hotel = $('GET HOTEL PROFILE').first().json;\n\nconst reply = `\n🏨 ${hotel.name}\n\n📍 Address: ${hotel.address || ''}\n📞 Phone: ${hotel.phone || ''}\n\n🕑 Check-in: ${hotel.check_in_time || '14:00'}\n🕛 Check-out: ${hotel.check_out_time || '12:00'}\n\n💳 Payment: ${hotel.payment_policy || ''}\n❌ Cancellation: ${hotel.cancellation_policy || ''}\n`;\n\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        -2528
+      ],
+      "id": "809f6af7-3723-46cc-8404-fa164c7ae7f5",
+      "name": "VALIDATE PARAMETERS"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "rooms",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{$json.room_id}}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "\"booked\""
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3920,
+        -2528
+      ],
+      "id": "4bd9da8d-2d92-4a33-80e1-9e6d1e2b695e",
+      "name": "UPDATE ROOM STATUS",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "dataToSend": "={\n  \"phone\": {{$json.phone}},\n  \"customer_id\": {{$json.customer_id}},\n  \"direction\": \"outbound\",\n  \"channel\": {{$json.channel}},\n  \"message_text\": {{$json.message}},\n  \"ai_intent\": {{$json.ai.intent}},\n  \"ai_response\": {{$json.ai}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4320,
+        -2528
+      ],
+      "id": "aea5eaca-0b5c-44ad-95b1-1c95466b618b",
+      "name": "SAVE MESSAGE LOG1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "conversation_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{$json.phone}}"
+            }
+          ]
+        },
+        "dataToSend": "={\n  \"last_intent\": {{$json.ai.intent}},\n  \"pending_booking_data\": {{$json.ai.parameters}},\n  \"last_message\": {{$json.message}},\n  \"updated_at\": {{$moment().format()}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4528,
+        -2528
+      ],
+      "id": "8007edef-f162-493e-92ec-0f4214835e7b",
+      "name": "UPDATE CONVERSATION STATE2",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "bookings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "room_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.room_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "'booked'"
+            },
+            {
+              "keyName": "check_in",
+              "condition": "lt",
+              "keyValue": "={{ $json.check_out }}"
+            },
+            {
+              "keyName": "check_out",
+              "condition": "gt",
+              "keyValue": "={{ $json.check_in }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3072,
+        -2800
+      ],
+      "id": "c5588db6-f31a-47f0-bd16-684d4deccee7",
+      "name": "CHECK ROOM AVAILABILITY",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rooms = $json.rooms || [];\nlet reply = \"\";\n\nif(rooms.length === 0){\n  reply = `الغرفة متوفرة من ${$json.check_in} حتى ${$json.check_out}`;\n} else {\n  reply = `الغرفة غير متوفرة في التواريخ المطلوبة.`;\n}\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        -2800
+      ],
+      "id": "fb96f8a1-9aea-4e2c-a88e-fc138b4a58ea",
+      "name": "FORMAT AVAILABILITY RESPONSE"
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "dataToSend": "={\n  \"phone\": {{$json.phone}},\n  \"customer_id\": {{$json.customer_id}},\n  \"direction\": \"outbound\",\n  \"channel\": {{$json.channel}},\n  \"message_text\": {{$json.message}},\n  \"ai_intent\": \"check_availability\",\n  \"ai_response\": {{$json}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3520,
+        -2800
+      ],
+      "id": "d9190e6d-d9d3-4d12-bc2d-19d9de5307c8",
+      "name": "SAVE MESSAGE LOG2",
+      "retryOnFail": false,
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "conversation_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "dataToSend": "={\n  \"last_intent\": \"check_availability\",\n  \"pending_booking_data\": null,\n  \"last_message\": {{$json.message}},\n  \"updated_at\": {{$moment().format()}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3728,
+        -2800
+      ],
+      "id": "e8c0b5e9-596c-4367-ae32-a41d2b0d9da3",
+      "name": "UPDATE CONVERSATION STATE1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3936,
+        -2800
+      ],
+      "id": "bcb2a45d-f69b-410d-b1ba-516ec379311b",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "bookings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{$json.booking_id}}"
+            },
+            {
+              "keyName": "customer_id",
+              "keyValue": "={{$json.customer_id}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3584,
+        -2336
+      ],
+      "id": "9bab48f3-ee05-43fa-88e0-0804b1f37c92",
+      "name": "FETCH BOOKING",
+      "alwaysOutputData": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "if(!$json.booking_id && !$json.room_id){\n  throw new Error(\"Booking ID or Room ID required\");\n}\nreturn [{ json: $json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        -2336
+      ],
+      "id": "36c5eb8e-96a3-42bc-8153-ef0cd4af1cbb",
+      "name": "VALIDATE PARAMETERS1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "bookings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.booking_id }}"
+            }
+          ]
+        },
+        "dataToSend": "={\n  \"status\": \"cancelled\"\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3792,
+        -2336
+      ],
+      "id": "c3271fc8-501a-4a19-a648-8c9de568ceaf",
+      "name": "UPDATE BOOKING STATUS",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "rooms",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{$json.room_id}}"
+            }
+          ]
+        },
+        "dataToSend": "={\n  \"status\": \"available\"\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4000,
+        -2336
+      ],
+      "id": "a355a07c-9757-4ad3-a93c-0cd72aed9fc1",
+      "name": "UPDATE ROOM STATUS1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "dataToSend": "={\n  \"phone\": {{$json.phone}},\n  \"customer_id\": {{$json.customer_id}},\n  \"direction\": \"outbound\",\n  \"channel\": {{$json.channel}},\n  \"message_text\": {{$json.message}},\n  \"ai_intent\": {{$json.ai.intent}},\n  \"ai_response\": {{$json.ai}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4416,
+        -2336
+      ],
+      "id": "9f6638fb-87f7-4ab0-aa0a-bc92e82967bb",
+      "name": "SAVE MESSAGE LOG3",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "conversation_state",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{$json.phone}}"
+            }
+          ]
+        },
+        "dataToSend": "={\n  \"last_intent\": {{$json.ai.intent}},\n  \"pending_booking_data\": null,\n  \"last_message\": {{$json.message}},\n  \"updated_at\": {{$moment().format()}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3200,
+        -1824
+      ],
+      "id": "cc403d80-f321-44e2-a144-33c0114d8756",
+      "name": "UPDATE CONVERSATION STATE3",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input from previous node\nconst room = $json[\"room\"] || \"الغرفة\";\n\n// Reply text\nconst reply = `تم إلغاء حجز ${room} بنجاح.\nنتمنى نشوفوك قريبا!`;\n\n// Output\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4208,
+        -2336
+      ],
+      "id": "c6e60779-2a72-4409-ae2d-fe5d190ea4ec",
+      "name": "FORMAT CANCEL CONFIRMATION"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3408,
+        -1824
+      ],
+      "id": "2b5347a3-24cf-4738-a718-ebef2ad64723",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "hotel_profile",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{$json.hotel_id}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3152,
+        -2080
+      ],
+      "id": "83a9638d-054b-4857-8776-7dac7f66ec52",
+      "name": "GET HOTEL PROFILE1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const hotel = $json || {};\nconst reply = `🏨 ${hotel.name || \"Hotel\"}\\n📍 Address: ${hotel.address || \"N/A\"}\\n📞 Phone: ${hotel.phone || \"N/A\"}\\n🕑 Check-in: ${hotel.check_in || \"14:00\"} | Check-out: ${hotel.check_out || \"12:00\"}\\n💳 Payment: ${hotel.payment_methods || \"Cash or Card\"}\\n❌ Cancellation: ${hotel.cancellation_policy || \"24h before\"}`;\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        -2080
+      ],
+      "id": "010c8a73-24eb-4a99-abdf-ef0c08b42499",
+      "name": "FORMAT HOTEL RESPONSE"
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "dataToSend": "={\n  \"phone\": {{$json.phone}},\n  \"customer_id\": {{$json.customer_id}},\n  \"direction\": \"outbound\",\n  \"channel\": {{$json.channel}},\n  \"message_text\": {{$json.message}},\n  \"ai_intent\": \"hotel_info\",\n  \"ai_response\": {{$json}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3568,
+        -2080
+      ],
+      "id": "e69cb2b2-23c3-4618-88da-b0d69fce75e2",
+      "name": "SAVE MESSAGE LOG4",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3776,
+        -2080
+      ],
+      "id": "cc3b3bd5-27eb-4e3e-a05b-f331c314265a",
+      "name": "Respond to Webhook3"
+    },
+    {
+      "parameters": {
+        "tableId": "messages_log",
+        "dataToSend": "={\n  \"phone\": {{$json.phone}},\n  \"customer_id\": {{$json.customer_id}} || null,\n  \"direction\": \"outbound\",\n  \"channel\": {{$json.channel}},\n  \"message_text\": {{$json.message}},\n  \"ai_intent\": \"unknown\",\n  \"ai_response\": {{$json}}\n}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        -1824
+      ],
+      "id": "2fd7fd14-ca0e-4995-9903-ecf98a820a3f",
+      "name": "SAVE MESSAGE LOG5",
+      "credentials": {
+        "supabaseApi": {
+          "id": "3sIGPDdeDC4kdRKN",
+          "name": "Supabase account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const reply = \"سمح ليا، ما فهمتش شنو بغيتي. واش بغيتي تشوف الغرف، تسول على الثمن، ولا دير حجز؟\";\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        -1824
+      ],
+      "id": "507969fa-f656-44be-ac07-6054669c0279",
+      "name": "FALLBACK RESPONSE"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3440,
+        -1824
+      ],
+      "id": "d6f1995f-48a1-4007-8ae7-9a193e7e903d",
+      "name": "Respond to Webhook4"
+    },
+    {
+      "parameters": {
+        "jsCode": "if(!$json.room_id){\n  throw new Error(\"Missing room_id\");\n}\nreturn [{ json: $json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        -2528
+      ],
+      "id": "2e8ff7ee-cc06-4940-82a8-bb3a84f9f2da",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nif(!data.customer_id || data.customer_id.trim() === \"\"){\n  data.customer_id = null;  // أو خلي record غير مربوط\n}\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3344,
+        -3024
+      ],
+      "id": "f9f05c37-6500-4cf9-8cf7-daa4e7ed372e",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const booking = $json.booking || {};\nconst reply = `تم حجز ${booking.room_name || \"Room\"} من ${booking.check_in} حتى ${booking.check_out} بنجاح.\\nشكرا لك!`;\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4128,
+        -2528
+      ],
+      "id": "83479e95-752d-4a1a-84e7-f82ec7fd1826",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"reply\": \"={{$json.reply}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3312,
+        -2016
+      ],
+      "id": "2c0b20ea-a065-47bd-9d9b-31c4427abb31",
+      "name": "Respond to Webhook5"
+    },
+    {
+      "parameters": {
+        "url": "https://xljwdqlhzyrlzaikjwfm.supabase.co/rest/v1/customers",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"apikey\": \"YOUR_SUPABASE_SERVICE_ROLE_KEY\",\n  \"Authorization\": \"Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY\",\n  \"Content-Type\": \"application/json\",\n  \"Prefer\": \"resolution=merge-duplicates\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -336,
+        0
+      ],
+      "id": "4b936cd6-274f-42b1-b5c9-a3e0a820d824",
+      "name": "Get Customer",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENROUTER_API_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-oss-120b\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a hotel assistant. Detect user intent (book_room, list_rooms, cancel_booking, hotel_info) and parameters (occupants, room_type, checkin_date, checkout_date, special_requests). Return JSON only. Example: User: \\\"I want a room for 2 persons\\\" Output: { \\\"intent\\\": \\\"book_room\\\", \\\"occupants\\\": 2, \\\"room_type\\\": null, \\\"checkin_date\\\": null, \\\"checkout_date\\\": null, \\\"special_requests\\\": null }\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $('Parse Input Node').item.json.message }}. Customer info: {{ $json.name }} (ID: {{ $json.id }}, Channel: {{ $json.channel }})\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        0
+      ],
+      "id": "c9d6b492-21ee-46f6-9fd6-fd3e332fcce1",
+      "name": "AI Intent Detection"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENROUTER_API_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-oss-120b\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.prompt }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        0
+      ],
+      "id": "3d853927-b374-48e5-97c5-542068be6ff4",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://xljwdqlhzyrlzaikjwfm.supabase.co/rest/v1/rooms?availability=eq.true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY"
+            },
+            {
+              "name": "Content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates ,return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1424,
+        240
+      ],
+      "id": "7ae34460-eeb1-4915-bb10-baec6faedd57",
+      "name": "Get Available Rooms",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $input.first().json.choices[0].message.content;\nconst parsed = JSON.parse(content);\n\nreturn [{\n  json: {\n    intent: parsed.intent,\n    occupants: parsed.occupants,\n    room_type: parsed.room_type,\n    checkin_date: parsed.checkin_date,\n    checkout_date: parsed.checkout_date,\n    special_requests: parsed.special_requests\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        0
+      ],
+      "id": "1b2a727b-6fe4-4ee4-9300-2ccdb7e47576",
+      "name": "Prompt Builder Node"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiMessage = $json[\"reply\"] || \"Sorry, I could not process your request.\";\nreturn [\n  {\n    json: {\n      reply: aiMessage,\n      raw: $json,\n      intent: $json[\"intent\"] || \"unknown\",\n      customer_id: $json.customer_id || null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "1a585097-6d39-43ea-b061-102e170ac13d",
+      "name": "Validate AI JSON"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input Node": {
+      "main": [
+        [
+          {
+            "node": "Upsert Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Customer": {
+      "main": [
+        [
+          {
+            "node": "Get Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "GET AVAILABLE ROOMS": {
+      "main": [
+        [
+          {
+            "node": "FORMAT ROOMS RESPONSE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT ROOMS RESPONSE": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE CONVERSATION STATE": {
+      "main": [
+        [
+          {
+            "node": "RESPOND TO WEBHOOK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG": {
+      "main": [
+        [
+          {
+            "node": "UPDATE CONVERSATION STATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CREATE BOOKING": {
+      "main": [
+        [
+          {
+            "node": "UPDATE ROOM STATUS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability SQL": {
+      "main": [
+        [
+          {
+            "node": "CREATE BOOKING",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VALIDATE PARAMETERS": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE ROOM STATUS": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG1": {
+      "main": [
+        [
+          {
+            "node": "UPDATE CONVERSATION STATE2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE CONVERSATION STATE2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CHECK ROOM AVAILABILITY": {
+      "main": [
+        [
+          {
+            "node": "FORMAT AVAILABILITY RESPONSE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT AVAILABILITY RESPONSE": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG2": {
+      "main": [
+        [
+          {
+            "node": "UPDATE CONVERSATION STATE1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE CONVERSATION STATE1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FETCH BOOKING": {
+      "main": [
+        [
+          {
+            "node": "UPDATE BOOKING STATUS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VALIDATE PARAMETERS1": {
+      "main": [
+        [
+          {
+            "node": "FETCH BOOKING",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE BOOKING STATUS": {
+      "main": [
+        [
+          {
+            "node": "UPDATE ROOM STATUS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE ROOM STATUS1": {
+      "main": [
+        [
+          {
+            "node": "FORMAT CANCEL CONFIRMATION",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG3": {
+      "main": [
+        [
+          {
+            "node": "UPDATE CONVERSATION STATE3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE CONVERSATION STATE3": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT CANCEL CONFIRMATION": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET HOTEL PROFILE1": {
+      "main": [
+        [
+          {
+            "node": "FORMAT HOTEL RESPONSE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT HOTEL RESPONSE": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG4": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE MESSAGE LOG5": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FALLBACK RESPONSE": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Check Availability SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "SAVE MESSAGE LOG1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer": {
+      "main": [
+        [
+          {
+            "node": "AI Intent Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Intent Detection": {
+      "main": [
+        [
+          {
+            "node": "Prompt Builder Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Validate AI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Builder Node": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AI JSON": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d0264900-6794-4e66-8f5f-202995282217",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d9b79e51e101a2aa623ad2eadf7903fece1c503ed1106f94c1a4161710aaa4aa"
+  },
+  "id": "wYLATkYMOPHl0OZg",
+  "tags": []
+}
